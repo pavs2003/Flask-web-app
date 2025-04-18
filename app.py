@@ -1,34 +1,28 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, request, render_template, send_file
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 import csv
-import os
 import time
+import os
 
 app = Flask(__name__)
 
 def init_driver():
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    service = Service('chromedriver')  # chromedriver must be in root folder or PATH
-    driver = webdriver.Chrome(service=service, options=options)
-    return driver
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    return webdriver.Chrome(options=chrome_options)
 
-def scrape_yelp_gyms(city="Los Angeles"):
+def scrape_yelp_gyms(city):
     driver = init_driver()
-    search_url = f"https://www.yelp.com/search?find_desc=Gyms&find_loc={city.replace(' ', '+')}"
-    driver.get(search_url)
+    url = f"https://www.yelp.com/search?find_desc=Gyms&find_loc={city.replace(' ', '+')}"
+    driver.get(url)
     time.sleep(5)
-
-    for _ in range(3):
-        driver.execute_script("window.scrollBy(0, 1000);")
-        time.sleep(1.5)
-
-    soup = BeautifulSoup(driver.page_source, "html.parser")
+    
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
     driver.quit()
 
     gyms = []
@@ -38,7 +32,7 @@ def scrape_yelp_gyms(city="Los Angeles"):
         name_tag = listing.find("a", class_="css-19v1rkv")
         rating_tag = listing.find("span", class_="display--inline__09f24__nqZ_W")
         address_tag = listing.find("span", class_="raw__09f24__T4Ezm")
-        phone_tag = listing.find("p", class_="text__09f24__2NHRu text-color--normal__09f24__3xep9")
+        phone_tag = listing.find("p", class_="text__09f24__2NHRu")
 
         if name_tag:
             gyms.append({
@@ -49,23 +43,19 @@ def scrape_yelp_gyms(city="Los Angeles"):
             })
     return gyms
 
-def save_to_csv(gyms, filename="gyms.csv"):
-    if not gyms:
-        return
-    keys = gyms[0].keys()
-    with open(filename, 'w', newline='', encoding='utf-8') as output_file:
-        dict_writer = csv.DictWriter(output_file, keys)
-        dict_writer.writeheader()
-        dict_writer.writerows(gyms)
-
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         city = request.form['city']
         gyms = scrape_yelp_gyms(city)
-        save_to_csv(gyms, "gyms.csv")
-        return send_file("gyms.csv", as_attachment=True)
-    return render_template("index.html")
+        filename = "gyms.csv"
+        with open(filename, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=["name", "rating", "address", "phone"])
+            writer.writeheader()
+            writer.writerows(gyms)
+        return send_file(filename, as_attachment=True)
+    return render_template('index.html')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
